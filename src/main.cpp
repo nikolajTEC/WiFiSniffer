@@ -13,6 +13,7 @@ const uint8_t WATCHED_MACS[][6] = {
     {0xBC, 0x6E, 0xE2, 0x97, 0x98, 0x2A},   // your device 1
     {0x08, 0x9D, 0xF4, 0x92, 0x7A, 0xD9},   // your device 2 (also master board)
     {0xA8, 0x93, 0x4A, 0x03, 0x81, 0x75},   // your device 3
+    {0xDC, 0xC4, 0x9C, 0x40, 0x16, 0xEA},
 };
 const uint8_t WATCHED_COUNT = sizeof(WATCHED_MACS) / 6;
 
@@ -66,13 +67,30 @@ struct ProbeReport {
 // ═══════════════════════════════════════════════════════════════
 //  TRILATERATION STATE (used by master only, compiled on all)
 // ═══════════════════════════════════════════════════════════════
-#define MAX_TRACKED 30
-#define STALE_MS    3000
+#define MAX_TRACKED  30
+#define STALE_MS     10000   // was 3000 — give slow probers time to be seen by all 3
+#define AVG_SAMPLES  5       // rolling average per node to smooth RSSI noise
 
 struct NodeReading {
-    float    distance;
+    float    samples[AVG_SAMPLES];
+    uint8_t  sampleCount;
+    uint8_t  sampleHead;     // ring buffer index
     uint32_t receivedAt;
     bool     valid;
+
+    void addSample(float d) {
+        samples[sampleHead] = d;
+        sampleHead = (sampleHead + 1) % AVG_SAMPLES;
+        if (sampleCount < AVG_SAMPLES) sampleCount++;
+        receivedAt = millis();
+        valid = true;
+    }
+
+    float average() const {
+        float sum = 0;
+        for (int i = 0; i < sampleCount; i++) sum += samples[i];
+        return sum / sampleCount;
+    }
 };
 
 struct TrackedDevice {
@@ -122,28 +140,26 @@ void processMasterReading(const ProbeReport& r) {
              r.mac[0], r.mac[1], r.mac[2],
              r.mac[3], r.mac[4], r.mac[5]);
 
-    // ── Console output (filtered) ─────────────────────────────
-    if (isWatched(r.mac)) {
+    if (isWatched(r.mac))
         Serial.printf("[PROBE]  node_%c  MAC: %s  |  RSSI: %4d dBm  |  ~%.1f m\n",
                       'a' + r.nodeIndex, macStr, r.rssi, r.distance);
-    }
 
-    // ── Tracking + trilateration runs for ALL devices ─────────
     TrackedDevice* dev = getDevice(r.mac);
     if (!dev) return;
-    dev->readings[r.nodeIndex] = { r.distance, millis(), true };
 
+    dev->readings[r.nodeIndex].addSample(r.distance);
+
+    // Check all 3 nodes have fresh readings
     uint32_t now = millis();
     for (int i = 0; i < 3; i++)
         if (!dev->readings[i].valid || (now - dev->readings[i].receivedAt) > STALE_MS)
             return;
 
     float posX, posY;
-    if (trilaterate(dev->readings[0].distance,
-                    dev->readings[1].distance,
-                    dev->readings[2].distance,
+    if (trilaterate(dev->readings[0].average(),
+                    dev->readings[1].average(),
+                    dev->readings[2].average(),
                     posX, posY)) {
-        // ── Position only printed if filtered ─────────────────
         if (isWatched(r.mac))
             Serial.printf("[POS]    MAC: %s  |  X: %.2f m  Y: %.2f m\n",
                           macStr, posX, posY);
