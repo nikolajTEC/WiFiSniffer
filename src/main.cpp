@@ -29,8 +29,9 @@ bool isWatched(const uint8_t* mac) {
 //  node_b = E8:6B:EA:D3:6B:C8
 //  node_c = anything else
 // ═══════════════════════════════════════════════════════════════
-const uint8_t MAC_MASTER[] = {0x08, 0x9D, 0xF4, 0x92, 0x7A, 0xD9};
+const uint8_t MAC_MASTER[] = {0xE8, 0x6B, 0xEA, 0xD4, 0x05, 0xB8};
 const uint8_t MAC_NODE_B[] = {0xE8, 0x6B, 0xEA, 0xD3, 0x6B, 0xC8};
+const uint8_t MAC_NODE_C[] = {0x40, 0x22, 0xD8, 0x07, 0x15, 0x10};
 
 uint8_t MASTER_MAC[6];   // filled at boot from MAC_MASTER
 uint8_t nodeRole  = 1;   // 0 = master, 1 = slave — set in setup()
@@ -116,16 +117,18 @@ bool trilaterate(float r0, float r1, float r2, float& outX, float& outY) {
 }
 
 void processMasterReading(const ProbeReport& r) {
-    if (!isWatched(r.mac)) return;
-
     char macStr[18];
     snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
              r.mac[0], r.mac[1], r.mac[2],
              r.mac[3], r.mac[4], r.mac[5]);
 
-    Serial.printf("[PROBE]  node_%c  MAC: %s  |  RSSI: %4d dBm  |  ~%.1f m\n",
-                  'a' + r.nodeIndex, macStr, r.rssi, r.distance);
+    // ── Console output (filtered) ─────────────────────────────
+    if (isWatched(r.mac)) {
+        Serial.printf("[PROBE]  node_%c  MAC: %s  |  RSSI: %4d dBm  |  ~%.1f m\n",
+                      'a' + r.nodeIndex, macStr, r.rssi, r.distance);
+    }
 
+    // ── Tracking + trilateration runs for ALL devices ─────────
     TrackedDevice* dev = getDevice(r.mac);
     if (!dev) return;
     dev->readings[r.nodeIndex] = { r.distance, millis(), true };
@@ -139,9 +142,12 @@ void processMasterReading(const ProbeReport& r) {
     if (trilaterate(dev->readings[0].distance,
                     dev->readings[1].distance,
                     dev->readings[2].distance,
-                    posX, posY))
-        Serial.printf("[POS]    MAC: %s  |  X: %.2f m  Y: %.2f m\n",
-                      macStr, posX, posY);
+                    posX, posY)) {
+        // ── Position only printed if filtered ─────────────────
+        if (isWatched(r.mac))
+            Serial.printf("[POS]    MAC: %s  |  X: %.2f m  Y: %.2f m\n",
+                          macStr, posX, posY);
+    }
 }
 
 void onDataRecv(const uint8_t* senderMac, const uint8_t* data, int len) {
@@ -200,19 +206,23 @@ void setup() {
     uint8_t ownMac[6];
     esp_wifi_get_mac(WIFI_IF_STA, ownMac);
 
-    if (memcmp(ownMac, MAC_MASTER, 6) == 0) {
-        nodeRole  = 0;
-        nodeIndex = 0;
-        Serial.println("\n[BOOT] Role: MASTER (node_a)");
-    } else if (memcmp(ownMac, MAC_NODE_B, 6) == 0) {
-        nodeRole  = 1;
-        nodeIndex = 1;
-        Serial.println("\n[BOOT] Role: SLAVE (node_b)");
-    } else {
-        nodeRole  = 1;
-        nodeIndex = 2;
-        Serial.println("\n[BOOT] Role: SLAVE (node_c)");
-    }
+    // replace the role detection block in setup()
+if (memcmp(ownMac, MAC_MASTER, 6) == 0) {
+    nodeRole  = 0;
+    nodeIndex = 0;
+    Serial.println("\n[BOOT] Role: MASTER (node_a)");
+} else if (memcmp(ownMac, MAC_NODE_B, 6) == 0) {
+    nodeRole  = 1;
+    nodeIndex = 1;
+    Serial.println("\n[BOOT] Role: SLAVE (node_b)");
+} else if (memcmp(ownMac, MAC_NODE_C, 6) == 0) {
+    nodeRole  = 1;
+    nodeIndex = 2;
+    Serial.println("\n[BOOT] Role: SLAVE (node_c)");
+} else {
+    Serial.println("\n[BOOT] ERROR: MAC not recognised — halting.");
+    while (true) delay(1000);
+}
 
     Serial.printf("[BOOT] Own MAC: %02X:%02X:%02X:%02X:%02X:%02X\n",
                   ownMac[0], ownMac[1], ownMac[2],
