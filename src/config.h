@@ -2,6 +2,7 @@
 #define CONFIG_H
 
 #include <Arduino.h>
+#include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include "secrets.h"
@@ -34,9 +35,9 @@ const uint8_t WATCHED_MACS[][6] = {
 const uint8_t WATCHED_COUNT = sizeof(WATCHED_MACS) / sizeof(WATCHED_MACS[0]);
 
 const uint8_t NODE_MACS[][6] = {
-    {0xE8, 0x6B, 0xEA, 0xD4, 0x05, 0xB8}, // Index 0: Master
-    {0xE8, 0x6B, 0xEA, 0xD3, 0x6B, 0xC8}, // Index 1: Slave B
-    {0x40, 0x22, 0xD8, 0x07, 0x15, 0x10}  // Index 2: Slave C
+    {0xE8, 0x6B, 0xEA, 0xD4, 0x05, 0xB8}, // Index 0: Master (nikolajnode)
+    {0xE8, 0x6B, 0xEA, 0xD3, 0x6B, 0xC8}, // Index 1: Slave B (carstennode)
+    {0x40, 0x22, 0xD8, 0x07, 0x15, 0x10}  // Index 2: Slave C (lokenode)
 };
 const uint8_t NODE_COUNT = sizeof(NODE_MACS) / sizeof(NODE_MACS[0]);
 
@@ -86,9 +87,9 @@ inline void macToString(const uint8_t* mac, char* out) {
     snprintf(out, 18, "%02X:%02X:%02X:%02X:%02X:%02X", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
-inline void printTimestamp() {
+inline void printTimestamp(const char* timeStr) {
     if (ENABLE_CONSOLE_DEBUG) {
-        Serial.printf("[%10lu ms] ", millis());
+        Serial.printf("[%s] ", timeStr);
     }
 }
 

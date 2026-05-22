@@ -7,5 +7,5 @@
 void initNetwork();
 void handleNetworkLoop();
 void sendLocationToMQTT(const char* macStr, float x, float y);
-
+String getCPHTimestamp();
 #endif

@@ -1,4 +1,3 @@
-// tracking.cpp
 #include "tracking.h"
 #include "networking.h"
 
@@ -59,9 +58,12 @@ void processMasterReading(const ProbeReport& r) {
 
     char macStr[18];
     macToString(r.mac, macStr);
+    
+    // Switch to actual network clock timestamp instead of millis counters
+    String cphTime = getCPHTimestamp();
 
     if (ENABLE_CONSOLE_DEBUG) {
-        printTimestamp();
+        printTimestamp(cphTime.c_str());
         Serial.printf("[PROBE] %-12s | MAC: %s | RSSI: %4d dBm | Dist: %6.2f m\n",
                       NODE_NAMES[r.nodeIndex], macStr, r.rssi, r.distance);
     }
@@ -85,7 +87,7 @@ void processMasterReading(const ProbeReport& r) {
     float posX, posY;
     if (trilaterate(r0, r1, r2, posX, posY)) {
         if (ENABLE_CONSOLE_DEBUG) {
-            printTimestamp();
+            printTimestamp(cphTime.c_str());
             Serial.printf("[POS]   MAC: %s | X: %6.2f m | Y: %6.2f m | A: %.2f  B: %.2f  C: %.2f\n",
                           macStr, posX, posY, r0, r1, r2);
         }

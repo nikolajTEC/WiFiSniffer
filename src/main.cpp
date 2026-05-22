@@ -1,4 +1,3 @@
-// main.cpp
 #include <Arduino.h>
 #include "config.h"
 #include "networking.h"

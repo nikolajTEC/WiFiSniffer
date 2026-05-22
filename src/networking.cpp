@@ -1,8 +1,6 @@
 #include "networking.h"
 #include "tracking.h"
 #include "secrets.h"
-#include <esp_now.h>
-#include <esp_wifi.h>
 #include "ca_cert.h"
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
@@ -17,9 +15,8 @@ static uint32_t lastHopTime = 0;
 WiFiClientSecure secureClient;
 PubSubClient mqttClient(secureClient);
 
-static void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
+static void onDataRecv(const uint8_t * mac, const uint8_t* data, int len) {
     if (len != sizeof(ProbeReport)) return;
-
     ProbeReport r;
     memcpy(&r, data, sizeof(r));
     processMasterReading(r);
@@ -31,6 +28,7 @@ void IRAM_ATTR snifferCallback(void* buf, wifi_promiscuous_pkt_type_t type) {
     const wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;
     const uint8_t* payload = pkt->payload;
 
+    // Isolate probe request management frames cleanly
     if (((payload[0] & 0x0C) >> 2) != 0 || ((payload[0] & 0xF0) >> 4) != 4) return;
 
     ProbeReport r;
@@ -43,14 +41,20 @@ void IRAM_ATTR snifferCallback(void* buf, wifi_promiscuous_pkt_type_t type) {
     if (nodeRole == 0) {
         processMasterReading(r);
     } else {
+        // Return to standard execution channel configuration pattern
         esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
         esp_now_send(NODE_MACS[0], (uint8_t*)&r, sizeof(r));
     }
 }
 
-// Exact implementation match of your layout's connectWiFi handler
 bool connectWiFi() {
     if (ENABLE_CONSOLE_DEBUG) Serial.printf("Connecting to WiFi: %s", WIFI_SSID);
+    
+    // Explicitly configure station interface configurations to avoid interface logic stalls
+    WiFi.disconnect(true);
+    delay(100);
+    WiFi.mode(WIFI_STA);
+    
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     unsigned long start = millis();
@@ -66,7 +70,6 @@ bool connectWiFi() {
     return true;
 }
 
-// Exact implementation match of your layout's syncNTP handler
 bool syncNTP() {
     configTzTime(TIMEZONE, NTP_SERVER);
     if (ENABLE_CONSOLE_DEBUG) Serial.print("Syncing NTP");
@@ -90,7 +93,6 @@ bool syncNTP() {
     return true;
 }
 
-// Exact implementation match of your layout's getCPHTimestamp helper
 String getCPHTimestamp() {
     struct tm ti{};
     if (!getLocalTime(&ti)) return "1970-01-01 00:00:00";
@@ -99,7 +101,6 @@ String getCPHTimestamp() {
     return String(buf);
 }
 
-// Exact implementation match of your layout's connectMQTT handler
 bool connectMQTT() {
     secureClient.setCACert(MQTT_CA_CERT);
     mqttClient.setServer(MQTT_HOST, MQTT_PORT);
@@ -148,33 +149,33 @@ void initNetwork() {
     }
 
     if (!identityFound) {
-        Serial.println("\n[BOOT] ERROR: Unregistered Local Network MAC Identity Layout Profile.");
+        Serial.println("\n[BOOT] ERROR: Unregistered MAC address.");
         while (true) delay(1000);
     }
 
     if (nodeRole == 0) {
-        if (ENABLE_CONSOLE_DEBUG) Serial.println("\n[BOOT] Init mode MASTER -> Running Cloud Network links.");
+        if (ENABLE_CONSOLE_DEBUG) Serial.println("\n[BOOT] Init mode MASTER -> Connecting Network Infrastructure.");
         if (connectWiFi()) {
             syncNTP();
             connectMQTT();
         }
 
         if (esp_now_init() != ESP_OK) {
-            Serial.println("[ERROR] Core ESP-NOW engine runtime launch failed");
+            Serial.println("[ERROR] ESP-NOW initialization failed");
             return;
         }
         esp_now_register_recv_cb(onDataRecv);
     } else {
-        if (ENABLE_CONSOLE_DEBUG) Serial.printf("\n[BOOT] Init mode SLAVE => Active tracking tag node: %s\n", NODE_NAMES[nodeIndex]);
+        if (ENABLE_CONSOLE_DEBUG) Serial.printf("\n[BOOT] Init mode SLAVE => Tracking node: %s\n", NODE_NAMES[nodeIndex]);
         
         if (esp_now_init() != ESP_OK) {
-            Serial.println("[ERROR] Core ESP-NOW engine runtime launch failed");
+            Serial.println("[ERROR] ESP-NOW initialization failed");
             return;
         }
 
         esp_now_peer_info_t peer = {};
         memcpy(peer.peer_addr, NODE_MACS[0], 6);
-        peer.channel = 1; 
+        peer.channel = 1; // Fixed structural fallback channel channel
         peer.encrypt = false;
         esp_now_add_peer(&peer);
 
@@ -189,7 +190,7 @@ void sendLocationToMQTT(const char* macStr, float x, float y) {
     if (nodeRole != 0) return; 
 
     if (!mqttClient.connected()) {
-        if (ENABLE_CONSOLE_DEBUG) Serial.println("[MQTT] Cannot publish location data, connection lost.");
+        if (ENABLE_CONSOLE_DEBUG) Serial.println("[MQTT] Cannot publish, connection offline.");
         return;
     }
 
@@ -198,7 +199,7 @@ void sendLocationToMQTT(const char* macStr, float x, float y) {
              "{\"mac\":\"%s\",\"timestamp\":\"%s\",\"x\":%.2f,\"y\":%.2f}", 
              macStr, getCPHTimestamp().c_str(), x, y);
 
-    if (mqttClient.publish(MQTT_TOPIC, payload, /*retained=*/false)) {
+    if (mqttClient.publish(MQTT_TOPIC, payload, false)) {
         if (ENABLE_CONSOLE_DEBUG) {
             Serial.printf("Published → %s : %s\n", MQTT_TOPIC, payload);
         }
