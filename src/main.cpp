@@ -8,7 +8,6 @@
 // ═══════════════════════════════════════════════════════════════
 //  MAC FILTER (moved to src/secrets.h)
 // ═══════════════════════════════════════════════════════════════
-
 bool isWatched(const uint8_t* mac) {
     if (!FILTER_ENABLED) return true;
 
@@ -24,13 +23,8 @@ bool isWatched(const uint8_t* mac) {
 //  NODE MACS (moved to src/secrets.h)
 // ═══════════════════════════════════════════════════════════════
 uint8_t MASTER_MAC[6];
-
 uint8_t nodeRole  = 1; // 0=master, 1=slave
 uint8_t nodeIndex = 0;
-
-// ═══════════════════════════════════════════════════════════════
-//  NODE POSITIONS (moved to src/secrets.h)
-// ═══════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════
 //  DISTANCE ESTIMATION
@@ -109,19 +103,11 @@ TrackedDevice* getDevice(const uint8_t* mac) {
             return &devices[i];
         }
     }
-
     for (int i = 0; i < MAX_TRACKED; i++) {
-
         if (!devices[i].active) {
-
             memcpy(devices[i].mac, mac, 6);
-
             devices[i].active = true;
-
-            for (int j = 0; j < 3; j++) {
-                devices[i].readings[j].valid = false;
-            }
-
+            // CHANGED: Removed redundant initialization loop; readings already zeroed by memset in setup
             return &devices[i];
         }
     }
@@ -276,7 +262,8 @@ const uint8_t CHANNELS[] = {
     1,2,3,4,5,6,7,8,9,10,11,12,13
 };
 
-const uint8_t CHANNEL_COUNT = sizeof(CHANNELS);
+// CHANGED: Fixed CHANNEL_COUNT to calculate element count, not raw bytes
+const uint8_t CHANNEL_COUNT = sizeof(CHANNELS) / sizeof(CHANNELS[0]);
 
 const uint32_t HOP_INTERVAL_MS = 350;
 
@@ -388,16 +375,8 @@ void setup() {
         NODE_NAMES[nodeIndex]
     );
 
-    char apName[32];
-
-    snprintf(
-        apName,
-        sizeof(apName),
-        "%s",
-        NODE_NAMES[nodeIndex]
-    );
-
-    WiFi.softAP(apName, "12345678");
+    // CHANGED: Pass node name directly to WiFi.softAP and use password from secrets.h
+    WiFi.softAP(NODE_NAMES[nodeIndex], WIFI_PASSWORD);
 
     memset(devices, 0, sizeof(devices));
 

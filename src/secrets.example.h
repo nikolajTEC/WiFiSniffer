@@ -36,4 +36,7 @@ constexpr float NODE_POS[3][2] = {
     {0.0f, 0.0f},
 };
 
+// WiFi AP password — set to your desired AP password
+constexpr const char* WIFI_PASSWORD = "your_wifi_password_here";
+
 #endif // SECRETS_EXAMPLE_H
