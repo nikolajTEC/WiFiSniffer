@@ -2,20 +2,12 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include "esp_wifi.h"
+#include "secrets.h"
+#include "ca_cert.h"
 
 // ═══════════════════════════════════════════════════════════════
-//  MAC FILTER
+//  MAC FILTER (moved to src/secrets.h)
 // ═══════════════════════════════════════════════════════════════
-const bool FILTER_ENABLED = true;
-
-const uint8_t WATCHED_MACS[][6] = {
-    {0xBC, 0x6E, 0xE2, 0x97, 0x98, 0x2A},
-    {0x08, 0x9D, 0xF4, 0x92, 0x7A, 0xD9},
-    {0xA8, 0x93, 0x4A, 0x03, 0x81, 0x75},
-    {0xDC, 0xC4, 0x9C, 0x40, 0x16, 0xEB},
-};
-
-const uint8_t WATCHED_COUNT = sizeof(WATCHED_MACS) / 6;
 
 bool isWatched(const uint8_t* mac) {
     if (!FILTER_ENABLED) return true;
@@ -29,31 +21,16 @@ bool isWatched(const uint8_t* mac) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  NODE MACS
+//  NODE MACS (moved to src/secrets.h)
 // ═══════════════════════════════════════════════════════════════
-const uint8_t MAC_MASTER[] = {0xE8, 0x6B, 0xEA, 0xD4, 0x05, 0xB8};
-const uint8_t MAC_NODE_B[] = {0xE8, 0x6B, 0xEA, 0xD3, 0x6B, 0xC8};
-const uint8_t MAC_NODE_C[] = {0x40, 0x22, 0xD8, 0x07, 0x15, 0x10};
-
-const char* NODE_NAMES[3] = {
-    "nikolajnode",
-    "carstennode",
-    "lokenode"
-};
-
 uint8_t MASTER_MAC[6];
 
 uint8_t nodeRole  = 1; // 0=master, 1=slave
 uint8_t nodeIndex = 0;
 
 // ═══════════════════════════════════════════════════════════════
-//  NODE POSITIONS
+//  NODE POSITIONS (moved to src/secrets.h)
 // ═══════════════════════════════════════════════════════════════
-const float NODE_POS[3][2] = {
-    {0.0f, 0.0f}, // nikolajnode
-    {0.0f, 4.0f}, // carstennode
-    {5.0f, 4.0f}, // lokenode
-};
 
 // ═══════════════════════════════════════════════════════════════
 //  DISTANCE ESTIMATION
