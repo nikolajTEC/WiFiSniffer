@@ -13,7 +13,6 @@
 void setup() {
     Serial.begin(115200);
     delay(1000);
-    MqttNtp::connectMQTT();
     WiFi.mode(WIFI_AP_STA);
 
     memcpy(MASTER_MAC, MAC_MASTER, 6);
@@ -22,6 +21,7 @@ void setup() {
     esp_wifi_get_mac(WIFI_IF_STA, ownMac);
 
     if (memcmp(ownMac, MAC_MASTER, 6) == 0) {
+        MqttNtp::connectMQTT();
         nodeRole  = 0;
         nodeIndex = 0;
     } else if (memcmp(ownMac, MAC_NODE_B, 6) == 0) {
