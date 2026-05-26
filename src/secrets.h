@@ -32,8 +32,6 @@ const uint8_t MAC_NODE_C[] = {0x40, 0x22, 0xD8, 0x07, 0x15, 0x10};
 // Node names (display names used for boot messages: "Role: Master/Slave, Name: <display>")
 // Set to your desired display names for each node (master + 2 slaves)
 
-#pragma once
-
 extern const char* NODE_NAMES[];
 
 
