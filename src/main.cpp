@@ -2,8 +2,7 @@
 #include <WiFi.h>
 #include <esp_now.h>
 #include "esp_wifi.h"
-
-// ═══════════════════════════════════════════════════════════════
+#include "mqtt/mqtt_test.h"
 //  MAC FILTER
 // ═══════════════════════════════════════════════════════════════
 const bool FILTER_ENABLED = true;
@@ -362,6 +361,8 @@ void setup() {
     Serial.begin(115200);
 
     delay(1000);
+
+    MqttTest::run();
 
     WiFi.mode(WIFI_AP_STA);
 
