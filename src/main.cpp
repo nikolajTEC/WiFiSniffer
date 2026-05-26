@@ -5,9 +5,6 @@
 #include "secrets.h"
 #include "ca_cert.h"
 
-// ═══════════════════════════════════════════════════════════════
-//  MAC FILTER (moved to src/secrets.h)
-// ═══════════════════════════════════════════════════════════════
 bool isWatched(const uint8_t* mac) {
     if (!FILTER_ENABLED) return true;
 
@@ -19,9 +16,6 @@ bool isWatched(const uint8_t* mac) {
     return false;
 }
 
-// ═══════════════════════════════════════════════════════════════
-//  NODE MACS (moved to src/secrets.h)
-// ═══════════════════════════════════════════════════════════════
 uint8_t MASTER_MAC[6];
 uint8_t nodeRole  = 1; // 0=master, 1=slave
 uint8_t nodeIndex = 0;
@@ -107,7 +101,6 @@ TrackedDevice* getDevice(const uint8_t* mac) {
         if (!devices[i].active) {
             memcpy(devices[i].mac, mac, 6);
             devices[i].active = true;
-            // CHANGED: Removed redundant initialization loop; readings already zeroed by memset in setup
             return &devices[i];
         }
     }
