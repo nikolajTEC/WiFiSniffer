@@ -4,9 +4,7 @@ uint8_t MASTER_MAC[6];
 uint8_t nodeRole  = 1; // 0=master, 1=slave
 uint8_t nodeIndex = 0;
 
-const uint8_t CHANNELS[] = {
-    1,2,3,4,5,6,7,8,9,10,11,12,13
-};
+const uint8_t CHANNELS[] = {1};
 
 const uint8_t CHANNEL_COUNT = sizeof(CHANNELS) / sizeof(CHANNELS[0]);
 const uint32_t HOP_INTERVAL_MS = 350;
