@@ -1,6 +1,7 @@
 #include "location_report.h"
 #include "mqtt_ntp.h"
 #include "mbedtls/md.h"
+#include "secrets.h"   // DEVICE_NAME
 
 // =============================================================================
 //  location_report.cpp
@@ -93,4 +94,30 @@ bool publishReport(const char* topic, const LocationReport& report) {
   String json = report.toJSON();
   Serial.printf("[Report] Payload: %s\n", json.c_str());
   return MqttNtp::publish(topic, json.c_str());
+}
+
+// =============================================================================
+//  publishLocation
+//  Builds a LocationReport from trilaterate() outputs and publishes it.
+//  The raw MAC is pseudonymised here — it is never forwarded.
+// =============================================================================
+bool publishLocation(const char* macStr,
+                     float       posX,
+                     float       posY,
+                     float       r0,
+                     float       r1,
+                     float       r2,
+                     const char* nameA,
+                     const char* nameB,
+                     const char* nameC) {
+  LocationReport r;
+  r.deviceId  = pseudonymiseMac(String(macStr));
+  r.timestamp = MqttNtp::getTimestamp();
+  r.x         = posX;
+  r.y         = posY;
+  r.nodeA     = { nameA, r0 };
+  r.nodeB     = { nameB, r1 };
+  r.nodeC     = { nameC, r2 };
+
+  return publishReport("/devices/" DEVICE_NAME "/location", r);
 }

@@ -84,3 +84,35 @@ String pseudonymiseMac(const String& rawMac);
 //  publishReport()
 // =============================================================================
 bool publishReport(const char* topic, const LocationReport& report);
+
+// =============================================================================
+//  publishLocation()
+//  Convenience wrapper — maps directly onto the variables you already have
+//  after a successful trilaterate() call.
+//
+//  Drop-in alongside your existing Serial.printf:
+//
+//    if (trilaterate(r0, r1, r2, posX, posY)) {
+//        printTimestamp();
+//        Serial.printf("[POS] MAC: %s | X: %6.2f m ...\n", macStr, posX, ...);
+//        publishLocation(macStr, posX, posY, r0, r1, r2,
+//                        "NodeA", "NodeB", "NodeC");
+//    }
+//
+//  Parameters:
+//    macStr      – raw detected MAC string (will be pseudonymised before publish)
+//    posX, posY  – trilateration result
+//    r0, r1, r2  – distances from each node used in trilaterate()
+//    nameA/B/C   – identifiers of the three slave nodes (e.g. their DEVICE_NAME)
+//
+//  Returns: true if the broker acknowledged the publish, false otherwise.
+// =============================================================================
+bool publishLocation(const char*  macStr,
+                     float        posX,
+                     float        posY,
+                     float        r0,
+                     float        r1,
+                     float        r2,
+                     const char*  nameA,
+                     const char*  nameB,
+                     const char*  nameC);

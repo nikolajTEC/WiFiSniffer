@@ -4,6 +4,8 @@
 #include "esp_wifi.h"
 #include "mqtt/mqtt_test.h"
 #include "mqtt/mqtt_ntp.h"
+#include "secrets.h"
+#include "mqtt/location_report.h"
 //  MAC FILTER
 // ═══════════════════════════════════════════════════════════════
 const bool FILTER_ENABLED = true;
@@ -263,19 +265,17 @@ void processMasterReading(const ProbeReport& r) {
 
     if (trilaterate(r0, r1, r2, posX, posY)) {
 
-        printTimestamp();
+    printTimestamp();
 
-        Serial.printf(
-            "[POS]   MAC: %s | X: %6.2f m | Y: %6.2f m | "
-            "A: %.2f  B: %.2f  C: %.2f\n",
-            macStr,
-            posX,
-            posY,
-            r0,
-            r1,
-            r2
-        );
-    }
+    Serial.printf(
+        "[POS]   MAC: %s | X: %6.2f m | Y: %6.2f m | "
+        "A: %.2f  B: %.2f  C: %.2f\n",
+        macStr, posX, posY, r0, r1, r2
+    );
+
+    publishLocation(macStr, posX, posY, r0, r1, r2,
+                    "NodeA", "NodeB", "NodeC");   // ← add this
+}
 }
 
 // ═══════════════════════════════════════════════════════════════
