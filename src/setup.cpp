@@ -3,7 +3,8 @@
 #include <esp_now.h>
 #include "esp_wifi.h"
 #include "secrets.h"
-#include "ca_cert.h"
+#include "mqtt/ca_cert.h"
+#include "mqtt/mqtt_ntp.h"
 #include "calculations.h"
 #include "tracking.h"
 #include "callbacks.h"
@@ -12,7 +13,7 @@
 void setup() {
     Serial.begin(115200);
     delay(1000);
-
+    MqttNtp::connectMQTT();
     WiFi.mode(WIFI_AP_STA);
 
     memcpy(MASTER_MAC, MAC_MASTER, 6);

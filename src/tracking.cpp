@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include <cstdio>
 #include <cstring>
-
+#include "mqtt/location_report.h"
 TrackedDevice devices[MAX_TRACKED];
 
 void NodeReading::addSample(float d) {
@@ -120,5 +120,8 @@ void processMasterReading(const ProbeReport& r) {
             r1,
             r2
         );
+
+        publishLocation(macStr, posX, posY, r0, r1, r2,
+                    "device01", "device02", "device03");
     }
 }

@@ -29,7 +29,7 @@
 // =============================================================================
 
 // ── Per-node distance reading ─────────────────────────────────────────────────
-struct NodeReading {
+struct NodeReading2 {
   String name;      // node identifier (DEVICE_NAME of the slave)
   float  distance;  // estimated distance in metres
 };
@@ -42,9 +42,9 @@ struct LocationReport {
   float       x;          // computed X position (metres)
   float       y;          // computed Y position
 
-  NodeReading nodeA;
-  NodeReading nodeB;
-  NodeReading nodeC;
+  NodeReading2 nodeA;
+  NodeReading2 nodeB;
+  NodeReading2 nodeC;
 
   // -------------------------------------------------------------------------
   //  toJSON()
