@@ -3,25 +3,37 @@
 // =============================================================================
 //  mqtt_test.h
 //
-//  Completely self-contained smoke-test for the MQTT + NTP pipeline.
-//  Drop this file (and mqtt_test.cpp) into your project and call ONE method
-//  from your existing setup():
+//  Looping smoke-test for the MQTT + NTP pipeline.
+//  Publishes a mock LocationReport every 10 s, staying connected between sends.
+//
+//  Add two calls to your existing main — nothing else changes:
 //
 //      #include "mqtt_test.h"
+//
 //      void setup() {
-//          MqttTest::run();   // that's it
+//          Serial.begin(115200);
+//          MqttTest::begin();   // connect once
 //      }
 //
-//  Nothing in here touches your main logic.
+//      void loop() {
+//          MqttTest::tick();    // keep alive + publish every 10 s
+//      }
 // =============================================================================
 
 namespace MqttTest {
 
   // -------------------------------------------------------------------------
-  //  run()
-  //  Connects WiFi → syncs NTP → connects MQTT → publishes a mock report →
-  //  disconnects.  Prints a clear PASS / FAIL summary to Serial.
+  //  begin()
+  //  Connects WiFi → syncs NTP → opens MQTT session.
+  //  Call once from setup().
   // -------------------------------------------------------------------------
-  void run();
+  void begin();
+
+  // -------------------------------------------------------------------------
+  //  tick()
+  //  Keeps the MQTT session alive and publishes a mock report every 10 s.
+  //  Call every loop() iteration — non-blocking.
+  // -------------------------------------------------------------------------
+  void tick();
 
 } // namespace MqttTest

@@ -3,6 +3,7 @@
 #include <esp_now.h>
 #include "esp_wifi.h"
 #include "mqtt/mqtt_test.h"
+#include "mqtt/mqtt_ntp.h"
 //  MAC FILTER
 // ═══════════════════════════════════════════════════════════════
 const bool FILTER_ENABLED = true;
@@ -362,8 +363,8 @@ void setup() {
 
     delay(1000);
 
-    MqttTest::run();
-
+    MqttNtp::connectMQTT();
+    MqttTest::begin();
     WiFi.mode(WIFI_AP_STA);
 
     memcpy(MASTER_MAC, MAC_MASTER, 6);
@@ -467,7 +468,9 @@ void setup() {
 //  LOOP
 // ═══════════════════════════════════════════════════════════════
 void loop() {
-
+    MqttNtp::maintain();
+    MqttTest::tick();
+    //  MqttNtp::publish("/devices/device02/location", payload); den reele metode, efter vi har trilaterated.
     if (millis() - lastHopTime >= HOP_INTERVAL_MS) {
 
         currentChannelIndex =

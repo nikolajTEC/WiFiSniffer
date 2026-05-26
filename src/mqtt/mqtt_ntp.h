@@ -10,89 +10,92 @@
 //
 //  Self-contained utility for:
 //    • NTP time-sync with a fixed IANA timezone (defaults to Europe/Copenhagen)
-//    • TLS-secured MQTT connection and single-publish helper
+//    • TLS-secured MQTT connection, keep-alive, and publish
 //
-//  Required companion files (not supplied here):
-//    secrets.h  – must define: WIFI_SSID, WIFI_PASSWORD,
-//                              MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_PASS
-//    ca_cert.h  – must define: MQTT_CA_CERT  (PEM string of broker CA cert)
+//  Designed for always-on devices: connect once at boot, call maintain()
+//  every loop iteration to keep the session alive and auto-reconnect on drops.
 //
-//  Usage example:
-//    #include "mqtt_ntp.h"
+//  Required companion files:
+//    secrets.h  – WIFI_SSID, WIFI_PASSWORD, MQTT_HOST, MQTT_PORT,
+//                 MQTT_USER, MQTT_PASS, DEVICE_NAME
+//    ca_cert.h  – MQTT_CA_CERT  (PEM string of broker CA certificate)
+//
+//  Typical usage (always-on device):
 //
 //    void setup() {
-//      if (MqttNtp::syncNTP())           { /* time is ready */ }
-//      if (MqttNtp::connectMQTT("myId")) { /* broker is ready */ }
-//      MqttNtp::publish("/my/topic", "{\"key\":\"value\"}");
-//      MqttNtp::disconnect();
+//      MqttNtp::connectMQTT();   // connect once at boot
 //    }
+//
+//    void loop() {
+//      MqttNtp::maintain();      // keeps session alive, reconnects if dropped
+//
+//      // ... read sensors, trilaterate, etc. ...
+//
+//      MqttNtp::publish("/devices/device02/location", payload);
+//    }
+//
+//  disconnect() is intentionally kept for devices that need to power down
+//  the radio (e.g. before deep sleep), but should NOT be called each cycle.
 // =============================================================================
 
 namespace MqttNtp {
 
-  // ── Timezone / NTP constants ─────────────────────────────────────────────
-  // POSIX tz string for Europe/Copenhagen (CET/CEST with DST rules).
-  // Replace with your own POSIX string if a different zone is needed.
-  constexpr const char* TIMEZONE          = "CET-1CEST,M3.5.0,M10.5.0/3";
-  constexpr const char* NTP_SERVER        = "pool.ntp.org";
-  constexpr uint32_t    NTP_TIMEOUT_MS    = 8000;   // max wait for NTP sync
+  // ── Timezone / NTP constants ───────────────────────────────────────────────
+  constexpr const char* TIMEZONE       = "CET-1CEST,M3.5.0,M10.5.0/3";
+  constexpr const char* NTP_SERVER     = "pool.ntp.org";
+  constexpr uint32_t    NTP_TIMEOUT_MS = 8000;
 
-  // ── MQTT constants ───────────────────────────────────────────────────────
-  constexpr uint16_t    MQTT_BUFFER_BYTES = 512;    // PubSubClient TX/RX buffer
-
-  // -------------------------------------------------------------------------
-  //  syncNTP()
-  //  Configures the ESP32 SNTP client with TIMEZONE and NTP_SERVER, then
-  //  blocks until the system clock is valid (year ≥ 2020) or the timeout
-  //  fires.
-  //
-  //  Returns: true  – clock is synced and getLocalTime() will return valid data
-  //           false – timed out; timestamp calls will return the epoch fallback
-  // -------------------------------------------------------------------------
-  bool syncNTP();
-
-  // -------------------------------------------------------------------------
-  //  getCPHTimestamp()
-  //  Returns the current local time as a formatted string.
-  //  Relies on syncNTP() having been called first.
-  //
-  //  Format: "YYYY-MM-DD HH:MM:SS"
-  //  Falls back to "1970-01-01 00:00:00" when the clock is not set.
-  // -------------------------------------------------------------------------
-  String getTimestamp();
+  // ── MQTT constants ─────────────────────────────────────────────────────────
+  constexpr uint16_t MQTT_BUFFER_BYTES  = 512;
+  // How long to wait between reconnect attempts (ms).
+  // Prevents hammering the broker if it is temporarily unreachable.
+  constexpr uint32_t RECONNECT_DELAY_MS = 5000;
 
   // -------------------------------------------------------------------------
   //  connectMQTT()
-  //  Opens a TLS connection to the broker defined in secrets.h, using the CA
-  //  certificate from ca_cert.h to verify the server identity, then performs
-  //  an MQTT CONNECT with the supplied clientId.
+  //  Connects WiFi, syncs NTP, and opens a TLS MQTT session.
+  //  Client ID and credentials are taken from secrets.h (DEVICE_NAME,
+  //  MQTT_USER, MQTT_PASS).  Call once from setup().
   //
-  //  Parameters:
-  //    clientId – unique MQTT client identifier string
-  //
-  //  Returns: true  – MQTT session is established and publish() can be called
-  //           false – connection failed (check Serial for the state code)
+  //  Returns: true  – fully connected and ready to publish
+  //           false – one of the steps failed (check Serial for details)
   // -------------------------------------------------------------------------
-  bool connectMQTT(const char* clientId);
+  bool connectMQTT();
+
+  // -------------------------------------------------------------------------
+  //  maintain()
+  //  Must be called every loop() iteration.
+  //  • Drives the PubSubClient keep-alive (PINGREQ/PINGRESP) so the broker
+  //    does not drop an idle session.
+  //  • Detects a lost connection and attempts to reconnect, but only after
+  //    RECONNECT_DELAY_MS has elapsed since the last attempt, so a dead
+  //    broker never blocks the rest of your loop.
+  // -------------------------------------------------------------------------
+  void maintain();
 
   // -------------------------------------------------------------------------
   //  publish()
-  //  Publishes a payload to the given topic.  connectMQTT() must succeed
-  //  before calling this.
-  //
-  //  Parameters:
-  //    topic   – full MQTT topic string (e.g. "/devices/device01/data")
-  //    payload – null-terminated message body (e.g. JSON string)
+  //  Publishes a payload to the given topic.
+  //  Safe to call even if the connection is temporarily down — returns false
+  //  immediately rather than blocking.
   //
   //  Returns: true  – broker acknowledged the publish
-  //           false – publish failed (no connection or broker rejected it)
+  //           false – not connected, or broker rejected the message
   // -------------------------------------------------------------------------
   bool publish(const char* topic, const char* payload);
 
   // -------------------------------------------------------------------------
+  //  getTimestamp()
+  //  Returns the current local time as "YYYY-MM-DD HH:MM:SS".
+  //  Falls back to "1970-01-01 00:00:00" if NTP has not synced yet.
+  // -------------------------------------------------------------------------
+  String getTimestamp();
+
+  // -------------------------------------------------------------------------
   //  disconnect()
-  //  Cleanly closes the MQTT session and brings down the WiFi interface.
-  //  Call this before entering deep sleep so the TCP stack has time to flush.
+  //  Cleanly closes the MQTT session and powers down WiFi.
+  //  Only needed before deep sleep or intentional shutdown.
+  //  Do NOT call this in a normal publish-then-reconnect cycle.
   // -------------------------------------------------------------------------
   void disconnect();
 

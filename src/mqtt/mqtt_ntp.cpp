@@ -1,7 +1,5 @@
 #include "mqtt_ntp.h"
-
-// ── Credentials / certificates (project-local, not committed to VCS) ─────────
-#include "secrets.h"   // MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_PASS
+#include "secrets.h"   // DEVICE_NAME, MQTT_HOST, MQTT_PORT, MQTT_USER, MQTT_PASS
 #include "ca_cert.h"   // MQTT_CA_CERT
 
 #include <WiFi.h>
@@ -9,104 +7,132 @@
 
 // =============================================================================
 //  mqtt_ntp.cpp
-//  Implementation of the MqttNtp namespace declared in mqtt_ntp.h
 // =============================================================================
 
 namespace {
 
-  // ── Module-private network objects ────────────────────────────────────────
-  // Declared in an anonymous namespace so they are invisible outside this TU.
+  // ── Module-private network objects ─────────────────────────────────────────
   WiFiClientSecure secureClient;
   PubSubClient     mqttClient(secureClient);
+
+  // ── Reconnect throttle ─────────────────────────────────────────────────────
+  // Tracks when the last reconnect attempt was made so maintain() does not
+  // hammer the broker if it is temporarily unreachable.
+  unsigned long lastReconnectAttempt = 0;
+
+  // ── Internal helpers ───────────────────────────────────────────────────────
+
+  bool connectWiFi() {
+    if (WiFi.status() == WL_CONNECTED) return true;
+
+    Serial.printf("[WiFi] Connecting to %s", WIFI_SSID);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+    unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED) {
+      if (millis() - start > 10000) {
+        Serial.println("\n[WiFi] Timeout!");
+        return false;
+      }
+      delay(250);
+      Serial.print(".");
+    }
+    Serial.printf("\n[WiFi] Connected. IP: %s\n", WiFi.localIP().toString().c_str());
+    return true;
+  }
+
+  bool syncNTP() {
+    // Configure SNTP; the ESP32 background task handles periodic re-sync
+    // automatically, so this only needs to be called once at boot.
+    configTzTime(MqttNtp::TIMEZONE, MqttNtp::NTP_SERVER);
+    Serial.print("[NTP] Syncing");
+
+    struct tm ti{};
+    unsigned long start = millis();
+    while (!getLocalTime(&ti) || ti.tm_year < (2020 - 1900)) {
+      if (millis() - start > MqttNtp::NTP_TIMEOUT_MS) {
+        Serial.println("\n[NTP] Sync timeout!");
+        return false;
+      }
+      delay(200);
+      Serial.print(".");
+    }
+
+    char buf[32];
+    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ti);
+    Serial.printf("\n[NTP] Synced: %s\n", buf);
+    return true;
+  }
+
+  // Opens a fresh MQTT session using credentials from secrets.h.
+  // Separated from connectMQTT() so maintain() can call it on reconnects
+  // without repeating the WiFi / NTP steps.
+  bool mqttConnect() {
+    Serial.printf("[MQTT] Connecting to %s:%d as '%s' ...\n",
+                  MQTT_HOST, MQTT_PORT, DEVICE_NAME);
+
+    if (mqttClient.connect(DEVICE_NAME "_esp32", MQTT_USER, MQTT_PASS)) {
+      Serial.println("[MQTT] Connected.");
+      return true;
+    }
+
+    Serial.printf("[MQTT] Failed. State code: %d\n", mqttClient.state());
+    return false;
+  }
 
 } // anonymous namespace
 
 // =============================================================================
-//  MqttNtp::syncNTP
-// =============================================================================
-bool MqttNtp::syncNTP() {
-  // Configure the ESP32 SNTP stack with the POSIX timezone string and the
-  // NTP server address.  configTzTime() sets both the TZ env var and kicks
-  // off the SNTP background task in one call.
-  configTzTime(TIMEZONE, NTP_SERVER);
-  Serial.print("[NTP] Syncing");
-
-  struct tm ti{};
-  unsigned long start = millis();
-
-  // Poll until the RTC is set to a sane year, or the timeout expires.
-  // A year < 2020 means the clock hasn't been updated yet (still at epoch 0).
-  while (!getLocalTime(&ti) || ti.tm_year < (2020 - 1900)) {
-    if (millis() - start > NTP_TIMEOUT_MS) {
-      Serial.println("\n[NTP] Sync timeout!");
-      return false;
-    }
-    delay(200);
-    Serial.print(".");
-  }
-
-  // Log the synchronised time for debugging
-  char buf[32];
-  strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ti);
-  Serial.printf("\n[NTP] Synced: %s (%s)\n", buf, TIMEZONE);
-  return true;
-}
-
-// =============================================================================
-//  MqttNtp::getTimestamp
-// =============================================================================
-String MqttNtp::getTimestamp() {
-  struct tm ti{};
-
-  // getLocalTime() fills the struct from the RTC.
-  // Returns false if the clock has never been synced.
-  if (!getLocalTime(&ti)) {
-    return "1970-01-01 00:00:00";   // safe fallback
-  }
-
-  char buf[24];
-  strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ti);
-  return String(buf);
-}
-
-// =============================================================================
 //  MqttNtp::connectMQTT
+//  Full boot sequence: WiFi → NTP → MQTT.
 // =============================================================================
-bool MqttNtp::connectMQTT(const char* clientId) {
-  // ── TLS setup ─────────────────────────────────────────────────────────────
-  // Supply the broker's CA certificate so the TLS handshake can verify the
-  // server identity.  Without this the connection would either fail or be
-  // trivially MITM-able.
+bool MqttNtp::connectMQTT() {
+  // ── TLS: verify broker identity against our CA cert ────────────────────────
   secureClient.setCACert(MQTT_CA_CERT);
 
-  // ── Broker address + buffer ───────────────────────────────────────────────
-  // MQTT_HOST / MQTT_PORT come from secrets.h.
-  // Bumping the buffer beyond the 256-byte default avoids silent truncation
-  // of larger payloads (e.g. JSON with multiple fields).
+  // ── Point PubSubClient at the broker ──────────────────────────────────────
   mqttClient.setServer(MQTT_HOST, MQTT_PORT);
   mqttClient.setBufferSize(MQTT_BUFFER_BYTES);
 
-  Serial.printf("[MQTT] Connecting to %s:%d as client '%s' ...\n",
-                MQTT_HOST, MQTT_PORT, clientId);
+  if (!connectWiFi()) return false;
+  if (!syncNTP())     return false;
+  return mqttConnect();
+}
 
-  // ── Authenticate and open session ─────────────────────────────────────────
-  // MQTT_USER / MQTT_PASS come from secrets.h.
-  if (mqttClient.connect(clientId, MQTT_USER, MQTT_PASS)) {
-    Serial.println("[MQTT] Connected.");
-    return true;
+// =============================================================================
+//  MqttNtp::maintain
+//  Call every loop() iteration — never blocks for more than RECONNECT_DELAY_MS.
+// =============================================================================
+void MqttNtp::maintain() {
+  if (mqttClient.connected()) {
+    // ── Happy path: drive the PubSubClient state machine ──────────────────
+    // Handles keep-alive pings and any incoming messages (subscriptions).
+    mqttClient.loop();
+    return;
   }
 
-  // PubSubClient state codes: https://pubsubclient.knolleary.net/api#state
-  Serial.printf("[MQTT] Connection failed. State code: %d\n", mqttClient.state());
-  return false;
+  // ── Connection is down: attempt reconnect after the throttle delay ─────────
+  unsigned long now = millis();
+  if (now - lastReconnectAttempt < RECONNECT_DELAY_MS) return;
+  lastReconnectAttempt = now;
+
+  Serial.println("[MQTT] Connection lost. Attempting reconnect...");
+
+  // Re-check WiFi first — if the AP dropped, reconnect that too.
+  if (!connectWiFi()) return;
+
+  mqttConnect();   // single attempt; maintain() will retry next cycle if needed
 }
 
 // =============================================================================
 //  MqttNtp::publish
 // =============================================================================
 bool MqttNtp::publish(const char* topic, const char* payload) {
-  // Retained flag is false – the broker will not cache the message for late
-  // subscribers.  Change to true if you need the last value to persist.
+  if (!mqttClient.connected()) {
+    Serial.println("[MQTT] Publish skipped — not connected.");
+    return false;
+  }
+
   if (mqttClient.publish(topic, payload, /*retained=*/false)) {
     Serial.printf("[MQTT] Published → %s : %s\n", topic, payload);
     return true;
@@ -117,20 +143,23 @@ bool MqttNtp::publish(const char* topic, const char* payload) {
 }
 
 // =============================================================================
+//  MqttNtp::getTimestamp
+// =============================================================================
+String MqttNtp::getTimestamp() {
+  struct tm ti{};
+  if (!getLocalTime(&ti)) return "1970-01-01 00:00:00";
+  char buf[24];
+  strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &ti);
+  return String(buf);
+}
+
+// =============================================================================
 //  MqttNtp::disconnect
+//  Only for intentional shutdown (e.g. before deep sleep).
 // =============================================================================
 void MqttNtp::disconnect() {
-  // ── Close MQTT session ────────────────────────────────────────────────────
-  // Sends a DISCONNECT packet so the broker can clean up the session cleanly,
-  // rather than waiting for the keep-alive timeout to expire.
   mqttClient.disconnect();
-
-  // ── Bring down WiFi ───────────────────────────────────────────────────────
-  // disconnect(true) powers down the radio immediately.
-  // The brief delay lets the TCP stack flush the FIN/ACK before the radio
-  // is cut – important before calling esp_deep_sleep_start().
   WiFi.disconnect(true);
   delay(100);
-
   Serial.println("[MQTT] Disconnected. WiFi off.");
 }
