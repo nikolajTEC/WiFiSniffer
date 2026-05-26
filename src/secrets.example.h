@@ -21,7 +21,8 @@ constexpr uint8_t MAC_MASTER[] = {0x00,0x00,0x00,0x00,0x00,0x00};
 constexpr uint8_t MAC_NODE_B[] = {0x00,0x00,0x00,0x00,0x00,0x00};
 constexpr uint8_t MAC_NODE_C[] = {0x00,0x00,0x00,0x00,0x00,0x00};
 
-// Node names
+// Node names (display names used for boot messages: "Role: Master/Slave, Name: <display>")
+// Set to your desired display names for each node (master + 2 slaves)
 constexpr const char* NODE_NAMES[3] = {
     "node1Name",
     "node2Name",
