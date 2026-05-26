@@ -1,50 +1,56 @@
 #pragma once
 
-// ── Standard / Arduino includes ───────────────────────────────────────────────
 #include <Arduino.h>
 
 // =============================================================================
 //  location_report.h
 //
-//  Defines the LocationReport data structure and the helpers to:
-//    • Build a report from trilateration output
-//    • Serialize it to a JSON string
-//    • Publish it via MqttNtp::publish()
+//  ── Device identifier / GDPR note ──────────────────────────────────────────
+//  The detected devices' raw MAC addresses are personal data under GDPR
+//  Article 4(1): they are permanent, globally unique identifiers that can be
+//  linked to an individual's movement patterns.
 //
-//  Depends on mqtt_ntp.h being included and MqttNtp::connectMQTT() having
-//  succeeded before publishReport() is called.
+//  This file pseudonymises each detected MAC before it ever leaves the device
+//  (GDPR Article 4(5)): the raw MAC is hashed with SHA-256 and only the first
+//  8 hex characters are published (e.g. "a3f9c12b").
 //
-//  Typical call sequence (master node):
-//    LocationReport r = LocationReport::mock();   // or build from real data
-//    Serial.println(r.toJSON());                  // inspect before sending
-//    bool ok = publishReport("/devices/master/location", r);
+//  Properties of the chosen approach:
+//    • Consistent   – same detected MAC always produces the same hash, so
+//                     multiple readings from one device can be correlated
+//    • Unique       – two different MACs will not collide for any realistic
+//                     fleet size (32-bit space, ~4 billion values)
+//    • Non-reversible – the raw MAC cannot be recovered from the hash alone
+//    • Separated    – no mapping between hash and MAC is stored or transmitted;
+//                     if needed it must be held in secured internal records
+//
+//  The ESP32 node's own identity is NOT stored in the payload — it is already
+//  implicit in the MQTT topic (/devices/<DEVICE_NAME>/...) and does not need
+//  to be repeated here.
 // =============================================================================
 
 // ── Per-node distance reading ─────────────────────────────────────────────────
-// Holds the identity and measured distance of one slave node.
 struct NodeReading {
-  String  name;       // human-readable node identifier, e.g. "NodeA"
-  float   distance;   // estimated distance in metres
+  String name;      // node identifier (DEVICE_NAME of the slave)
+  float  distance;  // estimated distance in metres
 };
 
 // ── Full trilateration report ─────────────────────────────────────────────────
-// Aggregates the three slave readings and the computed XY position.
 struct LocationReport {
 
-  String      timestamp;  // "YYYY-MM-DD HH:MM:SS"  – from MqttNtp::getTimestamp()
-  float       x;          // computed X position (metres, or your chosen unit)
+  String      deviceId;   // pseudonymised detected-device identifier (8-char MAC hash)
+  String      timestamp;  // "YYYY-MM-DD HH:MM:SS"
+  float       x;          // computed X position (metres)
   float       y;          // computed Y position
 
-  NodeReading nodeA;      // first slave: name + measured distance
-  NodeReading nodeB;      // second slave
-  NodeReading nodeC;      // third slave
+  NodeReading nodeA;
+  NodeReading nodeB;
+  NodeReading nodeC;
 
   // -------------------------------------------------------------------------
   //  toJSON()
-  //  Serialises the report to a compact JSON string ready for MQTT.
-  //
   //  Output shape:
   //  {
+  //    "deviceId":  "a3f9c12b",
   //    "timestamp": "2025-05-20 14:32:07",
   //    "location":  { "x": 3.20, "y": 5.75 },
   //    "nodes": [
@@ -58,20 +64,23 @@ struct LocationReport {
 
   // -------------------------------------------------------------------------
   //  mock()
-  //  Returns a LocationReport pre-filled with hardcoded values so you can
-  //  verify the MQTT pipeline end-to-end before any real sensor data exists.
+  //  Returns a report with a hardcoded detected MAC so the hash path is
+  //  exercised during testing without needing a real sniffed device.
   // -------------------------------------------------------------------------
   static LocationReport mock();
 };
 
 // =============================================================================
+//  pseudonymiseMac()
+//  Takes the raw MAC of a *detected* device (e.g. "AA:BB:CC:DD:EE:FF"),
+//  hashes it with SHA-256, and returns the first 8 hex characters.
+//
+//  Call this whenever a new MAC is sniffed — pass the result as deviceId.
+//  Never store or forward the raw MAC string beyond this call.
+// =============================================================================
+String pseudonymiseMac(const String& rawMac);
+
+// =============================================================================
 //  publishReport()
-//  Serialises `report` and hands the resulting JSON to MqttNtp::publish().
-//
-//  Parameters:
-//    topic  – full MQTT topic string (e.g. "/devices/master/location")
-//    report – populated LocationReport to send
-//
-//  Returns: true if the broker acknowledged the publish, false otherwise.
 // =============================================================================
 bool publishReport(const char* topic, const LocationReport& report);
