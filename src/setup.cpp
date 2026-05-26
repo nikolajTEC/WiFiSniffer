@@ -58,6 +58,8 @@ void setup() {
     if (nodeRole == 0) {
         esp_now_register_recv_cb(onDataRecv);
     } else {
+        esp_now_register_send_cb(onDataSent);
+
         esp_now_peer_info_t peer = {};
         memcpy(peer.peer_addr, MASTER_MAC, 6);
         peer.channel = 0;

@@ -43,4 +43,6 @@ extern TrackedDevice devices[MAX_TRACKED];
 
 TrackedDevice* getDevice(const uint8_t* mac);
 
+void macToString(const uint8_t* mac, char* out);
+
 #endif // TRACKING_H
