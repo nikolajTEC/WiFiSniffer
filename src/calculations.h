@@ -11,14 +11,14 @@
 const int   RSSI_REF  = -59;
 const float PATH_LOSS = 2.3f;
 
-float rssiToMeters(int8_t rssi) {
+inline float rssiToMeters(int8_t rssi) {
     return powf(10.0f, (float)(RSSI_REF - rssi) / (10.0f * PATH_LOSS));
 }
 
 // ═══════════════════════════════════════════════════════════════
 //  TRILATERATION
 // ═══════════════════════════════════════════════════════════════
-bool trilaterate(float r0, float r1, float r2,
+inline bool trilaterate(float r0, float r1, float r2,
                  float& outX, float& outY) {
 
     float x0 = NODE_POS[0][0];
